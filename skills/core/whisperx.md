@@ -7,6 +7,15 @@ audio or video files. This is the entry point for all transcript-dependent
 workflows: subtitle generation, edit decisions based on spoken content, and
 scene analysis from dialogue.
 
+**This machine is CPU/RAM constrained** (weak laptop CPU, only a couple GB of
+free RAM) — `medium`/`large-v3` are effectively unusable here (see the RAM/speed
+table below), which pushes local transcription toward `base`/`small`, at a real
+cost to recognition accuracy and subtitle quality. `AZURE_SPEECH_KEY` is
+configured in this project's `.env` — prefer `azure_stt` (see
+`.agents/skills/azure-speech-to-text/SKILL.md`) as the default transcriber on
+this machine, not just as an offline fallback. Its output schema is a drop-in
+match for `transcriber`, so no downstream change is needed.
+
 ## Tool
 
 | Tool | Capability |

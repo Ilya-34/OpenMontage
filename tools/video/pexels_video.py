@@ -165,15 +165,19 @@ class PexelsVideo(BaseTool):
             video = videos[0]
             preferred_quality = inputs.get("preferred_quality", "hd")
 
-            # Pick the best matching video file
+            # Pick the best matching video file. Portrait/vertical clips often
+            # come back from the API with no "quality" tag at all on any file,
+            # so the preferred-quality match below can legitimately find
+            # nothing — the fallback must still prefer the largest file, not
+            # video_files[0] in the API's own (frequently smallest-first)
+            # order.
             video_files = video.get("video_files", [])
-            selected_file = None
-            for vf in sorted(video_files, key=lambda x: x.get("width", 0), reverse=True):
-                if vf.get("quality") == preferred_quality:
-                    selected_file = vf
-                    break
-            if not selected_file and video_files:
-                selected_file = video_files[0]
+            files_by_size = sorted(video_files, key=lambda x: x.get("width", 0), reverse=True)
+            selected_file = next(
+                (vf for vf in files_by_size if vf.get("quality") == preferred_quality), None
+            )
+            if not selected_file and files_by_size:
+                selected_file = files_by_size[0]
 
             if not selected_file:
                 return ToolResult(success=False, error="No downloadable video file found.")

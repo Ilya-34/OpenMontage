@@ -48,9 +48,44 @@ def _probe_video(path: Path, tool_registry: Any) -> dict[str, Any]:
         if audio_probe:
             probe_result = audio_probe.execute({"input_path": str(path)})
             if probe_result.success:
-                result["technical_probe"] = probe_result.data
+                data = probe_result.data
+                audio = data.get("audio") or {}
+                # audio_probe's tool schema nests audio fields under "audio"
+                # and never reports video-stream fields (resolution/fps) at
+                # all — normalize to the flat shape the rest of this
+                # function (and the ffprobe fallback below) expects.
+                result["technical_probe"] = {
+                    "duration_seconds": data.get("duration_seconds", 0),
+                    "audio_codec": audio.get("codec", ""),
+                    "sample_rate": audio.get("sample_rate", 0),
+                    "channels": audio.get("channels", 0),
+                    "file_size_bytes": data.get("size_bytes", 0),
+                    "bitrate_kbps": round(data.get("bit_rate", 0) / 1000, 1),
+                }
     except Exception as e:
         logger.warning("audio_probe failed for %s: %s", path, e)
+
+    # audio_probe never reports video-stream fields; fill resolution/fps/codec
+    # in with a lightweight ffprobe query when they're still missing.
+    if result["technical_probe"] and "resolution" not in result["technical_probe"]:
+        try:
+            import subprocess
+            cmd = [
+                "ffprobe", "-v", "quiet", "-print_format", "json",
+                "-show_streams", str(path),
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if proc.returncode == 0:
+                streams = json.loads(proc.stdout).get("streams", [])
+                video_stream = next((s for s in streams if s.get("codec_type") == "video"), {})
+                if video_stream:
+                    result["technical_probe"]["resolution"] = (
+                        f"{video_stream.get('width', '?')}x{video_stream.get('height', '?')}"
+                    )
+                    result["technical_probe"]["fps"] = _parse_fps(video_stream.get("r_frame_rate", "0/1"))
+                    result["technical_probe"]["codec"] = video_stream.get("codec_name", "unknown")
+        except Exception as e:
+            logger.warning("video-stream ffprobe supplement failed for %s: %s", path, e)
 
     # If audio_probe didn't work, try ffprobe directly
     if not result["technical_probe"]:
@@ -90,11 +125,14 @@ def _probe_video(path: Path, tool_registry: Any) -> dict[str, Any]:
             timestamps = _sample_timestamps(duration, count=4)
             sample_result = frame_sampler.execute({
                 "input_path": str(path),
+                "strategy": "timestamps",
                 "timestamps": timestamps,
                 "output_dir": str(path.parent / ".source_review_frames"),
             })
             if sample_result.success:
-                result["representative_frames"] = sample_result.data.get("frame_paths", [])
+                result["representative_frames"] = [
+                    f["path"] for f in sample_result.data.get("frames", [])
+                ]
     except Exception as e:
         logger.warning("frame_sampler failed for %s: %s", path, e)
 

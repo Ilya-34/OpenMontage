@@ -1,0 +1,95 @@
+identity:
+  name: "Stripe"
+  category: minimalist
+  mood: "confident, quiet, premium, unhurried"
+  pace: deliberate
+  best_for: "Fintech/SaaS-flavored montage, premium B2B product edits, understated brand-led cuts"
+
+visual_language:
+  color_palette:
+    primary: ["#533AFD", "#061B31"]
+    accent: ["#F44BCC", "#7F7DFC"]
+    background: "#FFFFFF"
+    text: "#061B31"
+    muted: "#64748D"
+  composition: "generous whitespace, bento-grid asymmetric card layout, left-aligned hero text"
+  texture: "clean flat, no grain, no noise; soft mesh-gradient glow as the only decorative texture"
+
+typography:
+  headings:
+    font: "sohne-var, SF Pro Display, system-ui, sans-serif"
+    weight: 300
+    tracking: "-0.02em"
+    line_height: 1.15
+  body:
+    font: "sohne-var, SF Pro Display, system-ui, sans-serif"
+    weight: 400
+    line_height: 1.6
+  scale_system: "major_third"
+  weight_matrix:
+    title: 300
+    heading: 300
+    body: 400
+    caption: 400
+
+motion:
+  transitions: [fade, dissolve]
+  animation_style: "ease-out cubic-bezier(0.165, 0.84, 0.44, 1), smooth and unhurried, no bounce"
+  pacing_rules:
+    min_scene_hold_seconds: 3.0
+    max_scene_hold_seconds: 12
+    text_card_hold_seconds: 4.0
+    stat_card_hold_seconds: 3.5
+    transition_duration_seconds: 0.6
+  entrance: "fade-up, ease-out, no bounce"
+  exit: "fade-out"
+
+audio:
+  voice_style: "calm, confident, unhurried, measured pace"
+  music_mood: "ambient, minimal, unobtrusive"
+  music_volume: 0.07
+  sfx_style: "minimal to none; if used, soft and subtle"
+  ducking_threshold_db: -3
+
+asset_generation:
+  image_prompt_prefix: "clean fintech minimalism, white background, generous whitespace, "
+  image_negative_prompt: "bold or black display typography, stock photography, busy layout, heavy drop shadows, rounded friendly corners, saturated multi-color palette"
+  diagram_style: "sharp-edged flat cards, 0px radius, subtle 4px radius only on buttons"
+  consistency_anchors:
+    - "White (#FFFFFF) background throughout"
+    - "Ink Navy (#061B31) for primary text/headings, light font weight (300)"
+    - "Stripe Purple (#533AFD) as the only strong accent, used sparingly"
+    - "Soft multicolor mesh gradient (periwinkle/magenta/ice-blue) as the sole decorative flourish"
+
+overlays:
+  hero_title:
+    text: "#061B31"
+    accent: "#533AFD"
+  section_title:
+    text: "#061B31"
+  stat_card:
+    bg: "#F6F9FC"
+    border: "#533AFD"
+    text: "#061B31"
+    radius: 0
+    shadow: "none"
+
+quality_rules:
+  - "Never use bold/black weight on display headlines — 300 (light) only"
+  - "Minimum contrast ratio 4.5:1 for all text against white background"
+  - "No more than one strong accent color (Stripe Purple) on screen at once"
+  - "Structural cards/dividers stay sharp-edged (0px radius); only buttons/pills get ~4px"
+  - "No stock photography; no heavy drop shadows"
+
+chart_palette:
+  - "#533AFD"
+  - "#7F7DFC"
+  - "#F44BCC"
+  - "#061B31"
+  - "#64748D"
+  - "#E5EDF5"
+
+color_rules:
+  harmony_type: "analogous"
+  contrast_validation: true
+  colorblind_safe: true

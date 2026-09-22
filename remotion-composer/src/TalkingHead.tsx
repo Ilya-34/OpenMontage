@@ -19,6 +19,11 @@ import { KPIGrid } from "./components/charts/KPIGrid";
 import { HeroTitle } from "./components/HeroTitle";
 import { SectionTitle } from "./components/SectionTitle";
 import { StatReveal } from "./components/StatReveal";
+import { PhoneFrame } from "./components/PhoneFrame";
+import { PunchIn } from "./components/PunchIn";
+import { GlitchCut } from "./components/GlitchCut";
+import { ZoomPan } from "./components/ZoomPan";
+import { ScreenWarp } from "./components/ScreenWarp";
 
 // ---------------------------------------------------------------------------
 // Overlay types for talking-head video
@@ -57,6 +62,21 @@ export interface TalkingHeadOverlay {
   showLegend?: boolean;
   showMarkers?: boolean;
   columns?: 2 | 3 | 4;
+  // B-roll cutaway: a full-screen video that covers the talking-head layer
+  // for this overlay's duration while the original audio keeps playing
+  // underneath (classic L-cut). Use position: "full_overlay".
+  videoSrc?: string;
+  // Entrance/hold treatment on the cut. Replaces the default fade when set.
+  // "punch"/"glitch" are one-off entrance hits; "zoom" runs a slow
+  // continuous scale for the whole cutaway; "warp" is a liquid screen-flex
+  // settle-in (the "curved screen" look).
+  transition?: "punch" | "glitch" | "zoom" | "warp";
+  // Wraps the overlay content in the device-frame treatment: a bold
+  // all-caps label over a rounded-rect card. Plain black-backdrop card by
+  // default; set frameGlow for the neon high-impact variant.
+  phoneFrame?: boolean;
+  frameLabel?: string;
+  frameGlow?: boolean;
   // Styling
   backgroundColor?: string;
   color?: string;
@@ -71,10 +91,13 @@ export interface TalkingHeadOverlay {
 const POSITION_STYLES: Record<string, React.CSSProperties> = {
   lower_third: {
     position: "absolute",
-    bottom: 320, // Above caption area (~1600px)
+    // Captions now live centered in the bottom half of the frame (y=960-
+    // 1920), so this needs to clear that zone entirely rather than sit just
+    // above the old bottom-edge-pinned caption strip.
+    bottom: 1050,
     left: 40,
     right: 40,
-    height: 480,
+    height: 420,
   },
   upper_third: {
     position: "absolute",
@@ -144,7 +167,12 @@ const OverlayContent: React.FC<{ overlay: TalkingHeadOverlay }> = ({
         borderColor={overlay.accentColor}
         backgroundColor={overlay.backgroundColor}
         textColor={overlay.color}
-        containerBackgroundColor={bgColor}
+        // "transparent", not bgColor: CalloutBox's containerBackgroundColor
+        // paints its full bounding box, and overlay.backgroundColor already
+        // colors CalloutBox's own inner card — passing the same color to
+        // both stacked two identical rectangles into one flat, borderless
+        // block instead of a single floating card.
+        containerBackgroundColor="transparent"
       />
     );
   }
@@ -219,7 +247,13 @@ const OverlayContent: React.FC<{ overlay: TalkingHeadOverlay }> = ({
     );
   }
   if (overlay.type === "hero_title" && overlay.text) {
-    return <HeroTitle title={overlay.text} subtitle={overlay.subtitle} />;
+    return (
+      <HeroTitle
+        title={overlay.text}
+        subtitle={overlay.subtitle}
+        accentColor={overlay.accentColor}
+      />
+    );
   }
   if (overlay.type === "section_title" && overlay.text) {
     return (
@@ -228,6 +262,15 @@ const OverlayContent: React.FC<{ overlay: TalkingHeadOverlay }> = ({
         subtitle={overlay.subtitle}
         accentColor={overlay.accentColor}
         position="top-left"
+      />
+    );
+  }
+  if (overlay.type === "video_cutaway" && overlay.videoSrc) {
+    return (
+      <OffthreadVideo
+        muted
+        src={resolveAsset(overlay.videoSrc)}
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
     );
   }
@@ -271,11 +314,37 @@ const PositionedOverlay: React.FC<{ overlay: TalkingHeadOverlay }> = ({
   const posStyle = POSITION_STYLES[position] || POSITION_STYLES.lower_third;
   const isFullOverlay = position === "full_overlay";
 
+  let content = <OverlayContent overlay={overlay} />;
+  if (overlay.phoneFrame) {
+    content = (
+      <PhoneFrame
+        label={overlay.frameLabel}
+        accentColor={overlay.accentColor}
+        glow={overlay.frameGlow}
+      >
+        {content}
+      </PhoneFrame>
+    );
+  }
+  if (overlay.transition === "punch") {
+    content = <PunchIn>{content}</PunchIn>;
+  } else if (overlay.transition === "glitch") {
+    content = <GlitchCut>{content}</GlitchCut>;
+  } else if (overlay.transition === "zoom") {
+    content = <ZoomPan>{content}</ZoomPan>;
+  } else if (overlay.transition === "warp") {
+    content = <ScreenWarp>{content}</ScreenWarp>;
+  }
+
   return (
     <div
       style={{
         ...posStyle,
-        opacity,
+        // A transition already handles its own entrance treatment (punch
+        // flash / glitch jitter); layering the plain opacity fade on top of
+        // it just dulls the hit. Only fall back to the fade when there's no
+        // explicit transition.
+        opacity: overlay.transition ? 1 : opacity,
         overflow: "hidden",
         borderRadius: isFullOverlay ? 0 : 16,
         boxShadow: isFullOverlay
@@ -286,7 +355,15 @@ const PositionedOverlay: React.FC<{ overlay: TalkingHeadOverlay }> = ({
       {isFullOverlay && (
         <AbsoluteFill style={{ background: "rgba(0, 0, 0, 0.7)" }} />
       )}
-      <OverlayContent overlay={overlay} />
+      {/* Explicitly stacked above the scrim: a plain (position:static)
+          child here would otherwise still paint UNDER an absolutely
+          positioned sibling per normal CSS stacking rules regardless of
+          DOM order — which is exactly what made every "glitch" cutaway go
+          dark for most of its duration once GlitchCut's post-effect bypass
+          (`return <>{children}</>`) stopped wrapping it in an AbsoluteFill. */}
+      <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%" }}>
+        {content}
+      </div>
     </div>
   );
 };
@@ -301,6 +378,14 @@ export interface TalkingHeadProps {
   captions: WordCaption[];
   overlays?: TalkingHeadOverlay[];
   wordsPerPage?: number;
+  // When set, captions wrap to at most this many lines (measured, not a word
+  // count guess) instead of using wordsPerPage. See CaptionOverlay.
+  maxLines?: number;
+  // Break caption pages at clause/sentence punctuation instead of a fixed
+  // word count — takes priority over maxLines/wordsPerPage when set.
+  semanticPaging?: boolean;
+  semanticMinWords?: number;
+  semanticMaxWords?: number;
   fontSize?: number;
   highlightColor?: string;
   captionColor?: string;
@@ -315,6 +400,10 @@ export const TalkingHead: React.FC<TalkingHeadProps> = ({
   captions,
   overlays,
   wordsPerPage = 4,
+  maxLines,
+  semanticPaging,
+  semanticMinWords,
+  semanticMaxWords,
   fontSize = 52,
   highlightColor = "#22D3EE",
   captionColor = "#FFFFFF",
@@ -323,13 +412,25 @@ export const TalkingHead: React.FC<TalkingHeadProps> = ({
   captionWordSeparator,
 }) => {
   const { fps } = useVideoConfig();
+  const frame = useCurrentFrame();
+  // Soft fade-in ("наплыв") on the host at the very start of the video,
+  // instead of opening on a b-roll cutaway.
+  const introOpacity = interpolate(frame, [0, 22], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       {/* Layer 1: Video background */}
       <OffthreadVideo
         src={resolveAsset(videoSrc)}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          opacity: introOpacity,
+        }}
       />
 
       {/* Layer 2: Overlays (charts, stats, callouts, etc.) */}
@@ -349,17 +450,30 @@ export const TalkingHead: React.FC<TalkingHeadProps> = ({
         );
       })}
 
-      {/* Layer 3: Captions (topmost — always visible above overlays) */}
-      <CaptionOverlay
-        words={captions}
-        wordsPerPage={wordsPerPage}
-        fontSize={fontSize}
-        highlightColor={highlightColor}
-        backgroundColor={captionBackgroundColor}
-        color={captionColor}
-        {...(captionFontFamily ? { fontFamily: captionFontFamily } : {})}
-        {...(captionWordSeparator !== undefined ? { wordSeparator: captionWordSeparator } : {})}
-      />
+      {/* Layer 3: Captions (topmost — always visible above overlays).
+          Explicit z-index, not just DOM order: a full_overlay cutaway's own
+          Sequence turned out to paint above this layer during the cutaway
+          (captions vanished on every b-roll segment, worked fine on plain
+          talking-head footage) — relying on "renders later in JSX" to mean
+          "stacks on top" isn't reliable once nested overlay content brings
+          in its own positioned wrappers (PunchIn/GlitchCut/PhoneFrame). An
+          explicit, high z-index makes this layer unambiguously topmost. */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 100 }}>
+        <CaptionOverlay
+          words={captions}
+          wordsPerPage={wordsPerPage}
+          {...(maxLines ? { maxLines } : {})}
+          {...(semanticPaging ? { semanticPaging } : {})}
+          {...(semanticMinWords !== undefined ? { semanticMinWords } : {})}
+          {...(semanticMaxWords !== undefined ? { semanticMaxWords } : {})}
+          fontSize={fontSize}
+          highlightColor={highlightColor}
+          backgroundColor={captionBackgroundColor}
+          color={captionColor}
+          {...(captionFontFamily ? { fontFamily: captionFontFamily } : {})}
+          {...(captionWordSeparator !== undefined ? { wordSeparator: captionWordSeparator } : {})}
+        />
+      </div>
     </AbsoluteFill>
   );
 };

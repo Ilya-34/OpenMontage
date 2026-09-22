@@ -117,6 +117,7 @@ function stageSub(st) {
     if (Array.isArray(done)) return `${done.length} scene${done.length === 1 ? "" : "s"} done`;
     return "in progress";
   }
+  if (st.status === "in_progress" && st.progress_pct != null) return `in progress · ${st.progress_pct}%`;
   if (st.status === "in_progress") return "in progress";
   if (st.status === "failed") return st.error ? String(st.error).slice(0, 60) : "failed";
   if (st.timestamp) {
@@ -206,6 +207,10 @@ function renderDrawer(s) {
 
   const body = el("div", { class: "drawer-body" });
 
+  if (st.summary) {
+    body.append(el("p", { style: "color:var(--text-2);font-size:calc(12.5px * var(--fs-scale));line-height:1.5;margin-bottom:14px" }, st.summary));
+  }
+
   if (st.review) {
     const metrics = reviewMetrics(st.review);
     const summary = reviewSummaryText(st.review);
@@ -235,7 +240,7 @@ function renderDrawer(s) {
 
   return el("div", { class: "drawer" },
     el("div", { class: "drawer-head" },
-      el("h3", {}, `${st.name} — ${st.status}`),
+      el("h3", {}, `${st.name} — ${st.status}${st.progress_pct != null ? ` · ${st.progress_pct}%` : ""}`),
       st.gate_skipped ? el("span", { class: "gate-chip" }, "⚑ GATE SKIPPED") : null,
       st.versions > 1 ? el("span", { class: "ver-chip" }, `v${st.versions}`) : null,
       st.timestamp ? el("span", { class: "meta", style: "font-family:var(--mono);font-size:calc(10.5px * var(--fs-scale));color:var(--text-3)" }, st.timestamp) : null,

@@ -42,6 +42,9 @@ music_library/
 .env
 .env.local
 *.env
+# A bare "env" (no leading dot) doesn't match the patterns above — found one
+# at repo root holding live keys during the pre-push security audit.
+/env
 .youtube-token.json
 # Google service-account / Vertex AI keys — never commit
 gcp-*.json

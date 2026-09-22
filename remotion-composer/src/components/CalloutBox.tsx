@@ -39,7 +39,12 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
   title,
   borderColor,
   backgroundColor,
-  textColor = "#1F2937",
+  // Sibling overlay cards (StatCard, TextCard) already default to white —
+  // this one defaulted to a dark gray meant for a light-theme container,
+  // which renders as invisible dark-on-dark text whenever a caller (e.g.
+  // TalkingHead's video overlays) supplies a dark backgroundColor without
+  // also remembering to override textColor.
+  textColor = "#FFFFFF",
   fontFamily = "Inter, system-ui, sans-serif",
   fontSize = 32,
   titleFontSize = 38,

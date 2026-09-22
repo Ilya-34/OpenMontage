@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import signal
 import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -28,6 +30,14 @@ THUMB_WIDTHS = (320, 640, 960)
 _IGNORE_PARTS = {"node_modules", ".git", "__pycache__", ".cache"}
 
 SSE_HEARTBEAT_SECONDS = 15
+
+# The board should only run while there's something to track, not linger as a
+# forgotten background process. Shut down once no project has had an active
+# stage (in_progress or awaiting_human) for this long. 0/negative disables it
+# (e.g. for a developer running `backlot serve` in the foreground to poke
+# around an already-finished project).
+IDLE_SHUTDOWN_SECONDS = int(os.environ.get("BACKLOT_IDLE_SHUTDOWN_SECONDS", "180"))
+IDLE_CHECK_INTERVAL_SECONDS = 20
 
 
 def _ui_html(name: str, assets: tuple[str, ...]) -> HTMLResponse:
@@ -148,18 +158,45 @@ async def _watch_projects() -> None:
             hub.publish(pid)
 
 
+def _any_project_active() -> bool:
+    return any(s.get("active_stage") for s in _cached_summaries())
+
+
+async def _idle_watchdog() -> None:
+    """Stop the server once nothing has been active for IDLE_SHUTDOWN_SECONDS.
+
+    "Active" mirrors what the board itself shows as live: a stage that is
+    in_progress or awaiting_human (see summarize_project). A SIGTERM to our
+    own process is the simplest cross-version way to trigger uvicorn's normal
+    graceful shutdown from inside the app.
+    """
+    if IDLE_SHUTDOWN_SECONDS <= 0:
+        return
+    last_active = time.time()
+    while True:
+        await asyncio.sleep(IDLE_CHECK_INTERVAL_SECONDS)
+        if await asyncio.to_thread(_any_project_active):
+            last_active = time.time()
+            continue
+        if time.time() - last_active >= IDLE_SHUTDOWN_SECONDS:
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Own and cleanly stop the project watcher with FastAPI's lifespan API."""
+    """Own and cleanly stop the background tasks with FastAPI's lifespan API."""
 
-    task = asyncio.create_task(_watch_projects())
-    app.state.watch_task = task
+    tasks = [asyncio.create_task(_watch_projects()), asyncio.create_task(_idle_watchdog())]
+    app.state.background_tasks = tasks
     try:
         yield
     finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 def create_app() -> FastAPI:

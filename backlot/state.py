@@ -166,6 +166,11 @@ def _build_stage_rail(
             "error": cp.get("error") if cp else None,
             "human_approved": cp.get("human_approved") if cp else None,
             "partial_progress": (cp.get("metadata") or {}).get("partial_progress") if cp else None,
+            # Informal progress fields (no fixed schema — an ad-hoc run outside
+            # the full pipeline contract may still set these on its checkpoint
+            # so the board has something to show beyond a bare status).
+            "summary": cp.get("summary") if cp else None,
+            "progress_pct": cp.get("progress_pct") if cp else None,
             "versions": len(versions) + (1 if cp else 0),
             # Chronological status trail (history + current) — powers replay.
             "history_entries": (
@@ -207,6 +212,8 @@ def _build_stage_rail(
             "error": cp.get("error"),
             "human_approved": cp.get("human_approved"),
             "partial_progress": None,
+            "summary": cp.get("summary"),
+            "progress_pct": cp.get("progress_pct"),
             "versions": 1 + len(history.get(name, [])),
             "undeclared": True,
         }

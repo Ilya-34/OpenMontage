@@ -203,6 +203,20 @@ class VideoCompose(BaseTool):
                     "networks). The subprocess timeout is widened to match."
                 ),
             },
+            "concurrency": {
+                "type": "integer",
+                "default": 3,
+                "description": (
+                    "Parallel Remotion renderer processes, passed through as "
+                    "`--concurrency`. Each unit is a separate headless-Chrome worker "
+                    "(several hundred MB RAM apiece) — on RAM-constrained machines, "
+                    "raising this can cause swapping or a browser timeout instead of "
+                    "a faster render. Default of 3 is a tuned middle ground for this "
+                    "machine (8 cores, ~2GB usable RAM): concurrency=4 has caused "
+                    "browser timeouts here under memory pressure, concurrency=1-2 "
+                    "under-uses the CPU."
+                ),
+            },
         },
     }
 
@@ -956,7 +970,7 @@ class VideoCompose(BaseTool):
                                avoids copying the bloated shared public/>,
             "scale":          <optional float, e.g. 0.5 for a fast draft>,
             "crf":            <optional int, e.g. 18 for a crisp final>,
-            "concurrency":    <optional int>,
+            "concurrency":    <optional int, default 3>,
         }
         """
         bespoke = edit_decisions.get("bespoke") or {}
@@ -1040,8 +1054,7 @@ class VideoCompose(BaseTool):
             cmd.append(f"--scale={bespoke['scale']}")
         if bespoke.get("crf") is not None:
             cmd.append(f"--crf={bespoke['crf']}")
-        if bespoke.get("concurrency"):
-            cmd.append(f"--concurrency={bespoke['concurrency']}")
+        cmd.append(f"--concurrency={bespoke.get('concurrency', 3)}")
 
         try:
             # Run from inside the composer dir so npx resolves the local
@@ -2061,6 +2074,10 @@ class VideoCompose(BaseTool):
             ]
             if public_dir is not None:
                 cmd.append(f"--public-dir={public_dir}")
+
+            concurrency = inputs.get("concurrency", 3)
+            if concurrency:
+                cmd.append(f"--concurrency={concurrency}")
 
             # Apply media profile dimensions
             if profile_name:

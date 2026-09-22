@@ -1,0 +1,97 @@
+name: Render Video
+
+# Free cloud rendering for Remotion compositions, triggered by hand or by an
+# API call (workflow_dispatch supports both `gh workflow run` and the REST
+# API). Public repo -> unlimited free Actions minutes.
+#
+# A "job" is a folder under ci-jobs/<job_name>/ containing:
+#   - props.json   — the Remotion input props for the composition
+#   - manifest.json (optional) — {"assets": [{"url": "...", "dest": "dubai_job/source.mp4"}, ...]}
+#     `dest` is relative to remotion-composer/public/. Assets referenced by
+#     props.json as relative paths (staticFile) must land here before render.
+# Large user-supplied source footage isn't committed to the repo (kept local
+# per the project's own policy) — manifest.json points at wherever that
+# job's specific assets were uploaded (e.g. a GitHub Release asset).
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_name:
+        description: "Folder under ci-jobs/ with this job's props.json (+ optional manifest.json)"
+        required: true
+      composition:
+        description: "Remotion composition id to render"
+        required: true
+        default: "TalkingHead"
+      frames:
+        description: "Frame range, e.g. 0-1445. Leave empty to render the full composition."
+        required: false
+        default: ""
+      concurrency:
+        description: "Remotion render concurrency (GitHub-hosted runners have 2 cores)"
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: remotion-composer/package-lock.json
+
+      - name: Set up Python (for the asset-fetch helper)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg + headless-Chrome runtime libs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libasound2t64 libpango-1.0-0 libcairo2
+
+      - name: Install Remotion project dependencies
+        working-directory: remotion-composer
+        run: npm ci
+
+      - name: Validate job folder exists
+        run: test -f "ci-jobs/${{ inputs.job_name }}/props.json"
+
+      - name: Fetch job-specific media assets
+        if: hashFiles(format('ci-jobs/{0}/manifest.json', inputs.job_name)) != ''
+        run: |
+          python3 scripts/ci_fetch_job_assets.py "ci-jobs/${{ inputs.job_name }}"
+
+      - name: Render
+        working-directory: remotion-composer
+        run: |
+          FRAMES_ARG=""
+          if [ -n "${{ inputs.frames }}" ]; then
+            FRAMES_ARG="--frames=${{ inputs.frames }}"
+          fi
+          npx remotion render src/index.tsx "${{ inputs.composition }}" \
+            out/rendered.mp4 \
+            --props="../ci-jobs/${{ inputs.job_name }}/props.json" \
+            --concurrency="${{ inputs.concurrency }}" \
+            --timeout=120000 \
+            $FRAMES_ARG
+
+      - name: Upload rendered video
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-${{ inputs.job_name }}
+          path: remotion-composer/out/rendered.mp4
+          retention-days: 14
